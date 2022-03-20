@@ -1,0 +1,6 @@
+<launch>
+    <node name="image" pkg="dms_conigital" type="camera_publisher.py" output="screen"  />
+    <node name="dms" pkg="dms_conigital" type="DMS.py" output="screen"  >
+
+     </node>
+</launch>
