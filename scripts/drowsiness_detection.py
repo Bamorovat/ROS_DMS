@@ -1,5 +1,15 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# !/usr/bin/python
+
+"""
+Driver Drowsiness Detection
+Copyright ©2022 CONIGITAL LICENSE
+@version 2.1
+@author <Mohammad.Abadi@icavtech.com>
+"""
+
+
+# USAGE
+# python DMS.py
 
 from scipy.spatial import distance as dist
 from imutils.video import VideoStream
@@ -10,23 +20,24 @@ import imutils
 import time
 import dlib
 import cv2
+import numpy as np
+from pygame import mixer
 
 import sys
-import os
-from pose_estimator import PoseEstimator
+# sys.path is a list of absolute path strings
+sys.path.append('/home/abbas/catkin_p3v4/src/dms_conigital')
+from scripts.pose_estimator import PoseEstimator
+
+Face_Landmark_Model_Path = "/home/abbas/catkin_p3v4/src/dms_conigital/model/shape_predictor_68_face_landmarks.dat"
+Pose_Model_Path = "/home/abbas/catkin_p3v4/src/dms_conigital/model/model.txt"
+alarm_path = "/home/abbas/catkin_p3v4/src/dms_conigital/media/alarm.wav"
+attention_alarm_path = "/home/abbas/catkin_p3v4/src/dms_conigital/media/Attention.mp3"
+
 
 class DrowsinessDetection:
 
-    def __init__(self, frame):
-        #Add paths
-        script_directory = os.path.dirname(os.path.abspath(__file__))
-        self._model_path = script_directory + "/../model/"
-        self._media_path = script_directory + "/../media/"
-        self.Face_Landmark_Model_Path =  self._model_path + "shape_predictor_68_face_landmarks.dat"
-        self.Pose_Model_Path = self._model_path + "model.txt"
-        self.alarm_path = self._media_path + "alarm.wav"
-        self.attention_alarm_path = self._media_path + "Attention.mp3"        
-        # used to record the time when we processed last frame
+    def __init__(self, frame, eye_threshold=0.22):
+        self.Eye = None
         self.driver_consideration = False
         self.head_position = None
         self.camera_relative_x = 0
@@ -41,12 +52,15 @@ class DrowsinessDetection:
         self.prev_frame_time = 0
         self.new_frame_time = 0
 
-        self.EYE_AR_THRESH = 0.22
+        self.EYE_AR_THRESH = eye_threshold
         self.EYE_AR_CONSEC_FRAMES = 15
         self.MOUTH_THRESH = 0.44
-        self.Yawn_CONSEC_FRAMES = 10
-        self.HEAD_POSE_THRESH = 16
-        self.HEAD_CONSEC_FRAMES = 60
+        self.Yawn_CONSEC_FRAMES = 15
+        self.HEAD_POSE_RIGHT_THRESH = 11
+        self.HEAD_POSE_LEFT_THRESH = 20
+        self.HEAD_POSE_DOWN_THRESH = 15
+        self.HEAD_POSE_UP_THRESH = 13
+        self.HEAD_CONSEC_FRAMES = 25
 
         # initialize the frame counter as well as a boolean used to
         # indicate if the alarm is going off
@@ -60,6 +74,9 @@ class DrowsinessDetection:
         self.yaw = 0.0
         self.roll = 0.0
 
+        self.Eye_Open = []
+        self.Eye_Close = []
+
         # font which we will be using to display FPS
         self.font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -67,17 +84,15 @@ class DrowsinessDetection:
         # the facial landmark predictor
         print("[INFO] loading facial landmark predictor...")
         self.detector = dlib.get_frontal_face_detector()
-        self.predictor = dlib.shape_predictor(self.Face_Landmark_Model_Path)  # args["shape_predictor"]
+        self.predictor = dlib.shape_predictor(Face_Landmark_Model_Path)  # args["shape_predictor"]
 
         # height, width, number of channels in image
         self.image_height = self.frame.shape[0]
         self.image_width = self.frame.shape[1]
-        # self.image_height = 300
-        # self.image_width = 400
 
         # pose estimator
         print("[INFO] loading Pose Estimator...")
-        self.pose_estimator = PoseEstimator(img_size=(self.image_height, self.image_width), model_path=self.Pose_Model_Path)
+        self.pose_estimator = PoseEstimator(img_size=(self.image_height, self.image_width), model_path=Pose_Model_Path)
 
         # grab the indexes of the facial landmarks for the left and right eye, respectively
         (self.lStart, self.lEnd) = face_utils.FACIAL_LANDMARKS_IDXS["left_eye"]
@@ -147,13 +162,13 @@ class DrowsinessDetection:
         x = x - self.camera_relative_x
         y = y - self.camera_relative_y
 
-        if y < -self.HEAD_POSE_THRESH:
+        if y < -self.HEAD_POSE_RIGHT_THRESH:
             self.head_position = 'Right'
-        elif y > self.HEAD_POSE_THRESH:
+        elif y > self.HEAD_POSE_LEFT_THRESH:
             self.head_position = 'Left'
-        elif x < -self.HEAD_POSE_THRESH:
+        elif x < -self.HEAD_POSE_DOWN_THRESH:
             self.head_position = 'Downward'
-        elif x > self.HEAD_POSE_THRESH:
+        elif x > self.HEAD_POSE_UP_THRESH:
             self.head_position = 'Upward'
         else:
             self.head_position = 'Forward'
@@ -162,7 +177,7 @@ class DrowsinessDetection:
         # return self.head_position
 
     def DrowsinessDetector(self, frame):
-
+        mixer.init()
         self.frame = frame
         gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
 
@@ -238,7 +253,7 @@ class DrowsinessDetection:
             # check to see if the eye aspect ratio is below the blink
             # threshold, and if so, increment the blink frame counter
 
-            if ear < self.EYE_AR_THRESH:
+            if (ear < self.EYE_AR_THRESH and self.head_position != "Upward"):
                 self.COUNTER += 1
 
                 # if the eyes were closed for a sufficient number of
@@ -275,6 +290,7 @@ class DrowsinessDetection:
 
                 if self.head_counter >= self.HEAD_CONSEC_FRAMES:
                     self.driver_consideration = True
+                    # self.Head_ALARM = True
             else:
                 self.driver_consideration = False
                 self.head_counter = 0
@@ -297,14 +313,11 @@ class DrowsinessDetection:
 
         if self.Eye_Drowsiness:
             cv2.putText(self.frame, eye_text.format("close"), (10, 30), self.font, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.putText(self.frame, "DROWSINESS ALERT!", (10, 140), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(self.frame, "DROWSINESS ALERT!", (10, 100), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
             if not self.Eye_ALARM:
                 self.Eye_ALARM = True
-                # check to see if an alarm file was supplied,
-                # and if so, start a thread to have the alarm
-                # sound played in the background
-                t = Thread(target=self.sound_alarm, args=(self.alarm_path,))
+                t = Thread(target=self.sound_alarm, args=(alarm_path,))
                 t.deamon = True
                 t.start()
 
@@ -314,14 +327,11 @@ class DrowsinessDetection:
 
         if self.Yawn_Drowsiness:
             cv2.putText(self.frame, yawn_text.format("Yes"), (10, 45), self.font, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.putText(self.frame, "DROWSINESS ALERT!", (10, 140), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(self.frame, "DROWSINESS ALERT!", (10, 100), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
             if not self.Yawn_ALARM:
                 self.Yawn_ALARM = True
-                # check to see if an alarm file was supplied,
-                # and if so, start a thread to have the alarm
-                # sound played in the background
-                t = Thread(target=self.sound_alarm, args=(self.alarm_path,))
+                t = Thread(target=self.sound_alarm, args=(alarm_path,))
                 t.deamon = True
                 t.start()
 
@@ -335,21 +345,25 @@ class DrowsinessDetection:
         if self.driver_consideration:
                 cv2.putText(self.frame, head_pose_text.format(self.head_position), (10, 75), self.font,
                             0.4, (0, 0, 255), 1, cv2.LINE_AA)
-                cv2.putText(self.frame, "Driver Attention ALERT!", (10, 140), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+                cv2.putText(self.frame, "Driver Attention ALERT!", (10, 120), self.font, 0.5, (0, 0, 255),
+                            1, cv2.LINE_AA)
 
                 if not self.Head_ALARM:
                     self.Head_ALARM = True
-                    # check to see if an alarm file was supplied,
-                    # and if so, start a thread to have the alarm
-                    # sound played in the background
-                    t = Thread(target=self.sound_alarm, args=(self.attention_alarm_path,))
+                    t = Thread(target=self.sound_alarm, args=(attention_alarm_path,))
                     t.deamon = True
                     t.start()
 
         else:
+            # cv2.putText(self.frame, "Driver Attention ALERT!", (10, 140), self.font, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
             cv2.putText(self.frame, head_pose_text.format(self.head_position), (10, 75), self.font,
                     0.4, (200, 255, 0), 1, cv2.LINE_AA)
             self.Head_ALARM = False
+
+        # cv2.putText(self.frame, eye_text.format("open"), (10, 30), self.font, 0.4, (200, 255, 0), 1, cv2.LINE_AA)
+        # cv2.putText(self.frame, yawn_text.format("No"), (10, 45), self.font, 0.4, (200, 255, 0), 1, cv2.LINE_AA)
+        # cv2.putText(self.frame, head_pose_text.format(self.head_position), (10, 75), self.font,
+        #             0.4, (200, 255, 0), 1, cv2.LINE_AA)
 
         # cv2.putText(self.frame, pitch_position_text.format(self.pitch), (10, 90), self.font,
         #             0.4, (200, 255, 0), 1, cv2.LINE_AA)
@@ -369,16 +383,110 @@ class DrowsinessDetection:
         # cv2.destroyAllWindows()
         # vs.stop()
 
-        return self.pitch, self.yaw, self.roll, self.Eye_Drowsiness, self.Yawn_Drowsiness, self.head_position
+        # return self.pitch, self.yaw, self.roll, self.Eye_Drowsiness, self.Yawn_Drowsiness, self.head_position
+
+        return self.Eye_Drowsiness, self.Yawn_Drowsiness, self.head_position
+
+    def EyeCloseTuning(self, frame, eye):
+        self.Eye = eye
+        self.frame = frame
+        gray = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
+
+        # cv2.imshow('image1', gray)
+        # detect faces in the grayscale frame
+        rects = self.detector(gray, 0)
+
+        # loop over the face detections
+        for rect in rects:
+            # determine the facial landmarks for the face region, then
+            # convert the facial landmark (x, y)-coordinates to a NumPy
+            # array
+            shape = self.predictor(gray, rect)
+            shape = face_utils.shape_to_np(shape)
+            leftEye = shape[self.lStart:self.lEnd]
+            rightEye = shape[self.rStart:self.rEnd]
+
+            leftEAR = self.eye_aspect_ratio(leftEye)
+            rightEAR = self.eye_aspect_ratio(rightEye)
+
+            # average the eye aspect ratio together for both eyes
+            ear = (leftEAR + rightEAR) / 2.0
+
+            if self.Eye == 'open':
+                self.Eye_Open.insert(0, ear)
+            elif self.Eye == 'close':
+                self.Eye_Close.insert(0, ear)
+
+            # print('Eye Open: ', self.Eye_Open)
+
+            # compute the convex hull for the left and right eye, then
+            # visualize each of the eyes
+            leftEyeHull = cv2.convexHull(leftEye)
+            rightEyeHull = cv2.convexHull(rightEye)
+            cv2.drawContours(self.frame, [leftEyeHull], -1, (0, 255, 0), 1)
+            cv2.drawContours(self.frame, [rightEyeHull], -1, (0, 255, 0), 1)
+
+            # upscale the frame for output
+            self.frame = imutils.resize(self.frame, width=600)
+            # show the frame
+            cv2.imshow("Frame", self.frame)
+            key = cv2.waitKey(1) & 0xFF
+
+            if self.Eye == 'open':
+                return self.Eye_Open
+            elif self.Eye == 'close':
+                return self.Eye_Close
 
 
-def main():
+def eye_tuning():
+    print("[INFO] starting video stream thread...")
+    # vs = VideoStream(src=args["webcam"]).start()
+    vs = VideoStream().start()
+    frame = vs.read()
+    frame = imutils.resize(frame, width=400)
+
+    drowsiness = DrowsinessDetection(frame)
+
+    print("Please Keep Open Your Eyes for Five Seconds ...")
+    time.sleep(2)
+    t_end = time.time() + 5
+    while time.time() < t_end:
+        frame = vs.read()
+        frame = imutils.resize(frame, width=400)
+        eye_open = drowsiness.EyeCloseTuning(frame, 'open')
+
+    print('Thank You')
+    eye_open_ave = sum(eye_open) / len(eye_open)
+    print('Open Average: ', eye_open_ave)
+
+    time.sleep(1)
+    print("Please Keep Close Your Eyes for Five Seconds ...")
+    time.sleep(2)
+    t_end = time.time() + 5
+    while time.time() < t_end:
+        frame = vs.read()
+        frame = imutils.resize(frame, width=400)
+        eye_close = drowsiness.EyeCloseTuning(frame, 'close')
+
+    print('Thank You')
+    eye_close_ave = sum(eye_close) / len(eye_close)
+    print('Close Average: ', eye_close_ave)
+
+    eye_threshold = (eye_close_ave + eye_open_ave) / 2
+    print('Eye Close Threshold is: ', eye_threshold)
+
+    # self.EYE_AR_THRESH = eye_threshold
+
+    cv2.destroyAllWindows()
+    vs.stop()
+
+
+def main(setting=True):
 
     # construct the argument parse and parse the arguments
     # ap = argparse.ArgumentParser()
     # ap.add_argument("-w", "--webcam", type=int, default=0, help="index of webcam on system")
     # args = vars(ap.parse_args())
-
     # start the video stream thread
     print("[INFO] starting video stream thread...")
     # vs = VideoStream(src=args["webcam"]).start()
@@ -398,4 +506,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    # main()
+    eye_tuning()
+    # main(setting=True)
