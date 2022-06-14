@@ -1,11 +1,5 @@
-# !/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Driver Drowsiness Detection
-Copyright ©2022 CONIGITAL LICENSE
-@version ...
-@author <Mohammad.Abadi@icavtech.com>
-"""
 
 import cv2
 import numpy as np
