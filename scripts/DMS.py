@@ -47,7 +47,6 @@ class DMS:
         self.frame = None
         self.drowsiness = None
         self.eye_tune = False
-        self.counter = 0
         self.prev_frame_time = 0
         self.new_frame_time = 0
         # self.bridge = CvBridge()
@@ -141,11 +140,7 @@ class DMS:
                 self.frame = imutils.resize(self.frame, width=400)
 
                 if not self.eye_tune:
-                    # if self.counter == 0:
                     self.drowsiness = DrowsinessDetection(self.frame)
-                    # self.eye_close_tuning = EyeCloseTune(self.frame)
-                    # self.counter = self.counter + 1
-                    # self.eye_threshold, self.eye_tune = self.eye_close_tuning.tune_eye_close()
                     self.eye_threshold, self.eye_tune = self.tune_eye_close()
                     self.drowsiness = DrowsinessDetection(self.frame, self.eye_threshold)
                 elif self.eye_tune:
