@@ -224,7 +224,7 @@ class DrowsinessDetection:
         self.frame = imutils.resize(self.frame, width=600)
 
         # putting the INFO on the Frame
-        eye_text = "[Info _ Drowsiness] Eye: {}"
+        eye_text = "[Info _ Drowsiness] Eyes: {}"
         yawn_text = "[Info _ Drowsiness] Yawn: {}"
         fps_text = "[Info _ FPS]:  {}"
         head_pose_text = "[Info _ Driver] Looking {}"
@@ -233,7 +233,7 @@ class DrowsinessDetection:
         roll_position_text = "[Info _ Position] Roll: {}"
 
         if self.Eye_Drowsiness:
-            cv2.putText(self.frame, eye_text.format("close"), (10, 30), self.font, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(self.frame, eye_text.format("closed"), (10, 30), self.font, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
             cv2.putText(self.frame, "DROWSINESS ALERT!", (10, 140), self.font, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
             if not self.Eye_ALARM:
