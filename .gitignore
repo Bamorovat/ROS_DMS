@@ -1,1 +1,30 @@
-./idea*
+# IDE and editor folders
+.idea/
+.vscode/
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+# Build and distribution folders
+build/
+dist/
+*.egg-info/
+# ROS build files
+devel/
+log/
+# Media files
+media/
+# Model files
+model/*.dat
+model/*.txt
+# Launch files
+launch/*.launch
+# System files
+.DS_Store
+Thumbs.db
+# Environment files
+.env
+# Misc
+*.swp
+*.bak
+
